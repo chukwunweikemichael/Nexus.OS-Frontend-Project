@@ -311,3 +311,27 @@ html {
 .amber-text {
   color: #FFBF00;
 }
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@keyframes heartbeat {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 2px #FFBF00); }
+  50% { opacity: 0.5; filter: drop-shadow(0 0 8px #FFBF00); }
+}
+
+.nexus-badge {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.nexus-badge:hover {
+  background: rgba(255, 191, 0, 0.12) !important;
+  border-color: rgba(255, 191, 0, 0.5) !important;
+  transform: translateY(-2px);
+}
+
+.pulse-dot {
+  animation: heartbeat 2s infinite;
+}

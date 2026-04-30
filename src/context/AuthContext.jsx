@@ -2,7 +2,6 @@ import { createContext, useContext, useState, useEffect } from "react";
 
 const AuthContext = createContext();
 
-// ✅ SAFE JSON PARSE (prevents crashes)
 const safeParse = (data, fallback) => {
   try {
     return JSON.parse(data) || fallback;
@@ -22,7 +21,7 @@ export const AuthProvider = ({ children }) => {
         const storedUser = safeParse(localStorage.getItem("user"), null);
         const users = safeParse(localStorage.getItem("users"), []);
 
-        if (storedUser && users.length) {
+        if (storedUser) {
           const freshUser = users.find((u) => u.id === storedUser.id);
 
           if (freshUser) {
@@ -35,7 +34,8 @@ export const AuthProvider = ({ children }) => {
         } else {
           setUser(null);
         }
-      } catch {
+      } catch (e) {
+        console.error("Auth sync error:", e);
         setUser(null);
       } finally {
         setLoading(false);
@@ -43,19 +43,16 @@ export const AuthProvider = ({ children }) => {
     };
 
     syncUser();
-
-    // ✅ sync across tabs
     window.addEventListener("storage", syncUser);
     return () => window.removeEventListener("storage", syncUser);
   }, []);
 
-  // 🔥 REGISTER
+  // ====================== REGISTER ======================
   const register = async ({ name, email, password }) => {
     let users = safeParse(localStorage.getItem("users"), []);
-
     const normalizedEmail = email.trim().toLowerCase();
 
-    const exists = users.find(
+    const exists = users.some(
       (u) => u.email?.trim().toLowerCase() === normalizedEmail
     );
 
@@ -64,7 +61,7 @@ export const AuthProvider = ({ children }) => {
     const isFirstUser = users.length === 0;
 
     const newUser = {
-      id: Date.now(),
+      id: Date.now().toString(),
       name: name.trim(),
       email: normalizedEmail,
       password,
@@ -77,16 +74,14 @@ export const AuthProvider = ({ children }) => {
     };
 
     users.push(newUser);
-
     localStorage.setItem("users", JSON.stringify(users));
     localStorage.setItem("user", JSON.stringify(newUser));
 
     setUser(newUser);
-
     return newUser;
   };
 
-  // 🔥 LOGIN
+  // ====================== LOGIN ======================
   const login = async ({ email, password }) => {
     const users = safeParse(localStorage.getItem("users"), []);
     const normalizedEmail = email.trim().toLowerCase();
@@ -97,7 +92,7 @@ export const AuthProvider = ({ children }) => {
         u.password === password
     );
 
-    if (!foundUser) throw new Error("Invalid credentials");
+    if (!foundUser) throw new Error("Invalid email or password");
 
     localStorage.setItem("user", JSON.stringify(foundUser));
     setUser(foundUser);
@@ -105,40 +100,44 @@ export const AuthProvider = ({ children }) => {
     return foundUser;
   };
 
-  // 🔥 UPDATE USER (FIXED DEEP MERGE)
-  const updateUser = (updatedUser) => {
-    let users = safeParse(localStorage.getItem("users"), []);
-
-    const updatedUsers = users.map((u) => {
-      if (u.id !== updatedUser.id) return u;
-
-      return {
-        ...u,
-        ...updatedUser,
-        profile: {
-          ...u.profile,
-          ...(updatedUser.profile || {}),
-        },
-      };
-    });
-
-    const freshUser = updatedUsers.find((u) => u.id === updatedUser.id);
-
-    if (!freshUser) return;
-
-    localStorage.setItem("users", JSON.stringify(updatedUsers));
-    localStorage.setItem("user", JSON.stringify(freshUser));
-
-    setUser(freshUser);
+  // ====================== OTHER FUNCTIONS ======================
+  const logout = () => {
+    localStorage.removeItem("user");
+    setUser(null);
   };
 
-  // 🔥 REFRESH USER
+  const updateUser = (updatedFields) => {
+    if (!user) return;
+
+    let users = safeParse(localStorage.getItem("users"), []);
+
+    const updatedUsers = users.map((u) =>
+      u.id === user.id
+        ? {
+            ...u,
+            ...updatedFields,
+            profile: {
+              ...u.profile,
+              ...(updatedFields.profile || {}),
+            },
+          }
+        : u
+    );
+
+    const freshUser = updatedUsers.find((u) => u.id === user.id);
+
+    if (freshUser) {
+      localStorage.setItem("users", JSON.stringify(updatedUsers));
+      localStorage.setItem("user", JSON.stringify(freshUser));
+      setUser(freshUser);
+    }
+  };
+
   const refreshUser = () => {
     const storedUser = safeParse(localStorage.getItem("user"), null);
-    const users = safeParse(localStorage.getItem("users"), []);
-
     if (!storedUser) return;
 
+    const users = safeParse(localStorage.getItem("users"), []);
     const freshUser = users.find((u) => u.id === storedUser.id);
 
     if (freshUser) {
@@ -147,81 +146,35 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // 🔥 LOGOUT
-  const logout = () => {
-    localStorage.removeItem("user");
-    setUser(null);
-  };
-
-  // 🔥 DELETE ACCOUNT
   const deleteUser = () => {
-    if (!user) return;
-
-    if (!window.confirm("Delete account permanently?")) return;
+    if (!user || !window.confirm("Delete account permanently?")) return;
 
     let users = safeParse(localStorage.getItem("users"), []);
     users = users.filter((u) => u.id !== user.id);
 
     localStorage.setItem("users", JSON.stringify(users));
-
-    localStorage.setItem(
-      "gigs",
-      JSON.stringify(
-        safeParse(localStorage.getItem("gigs"), []).filter(
-          (g) => g.ownerId !== user.id
-        )
-      )
-    );
-
-    localStorage.setItem(
-      "applications",
-      JSON.stringify(
-        safeParse(localStorage.getItem("applications"), []).filter(
-          (a) => a.applicantId !== user.id
-        )
-      )
-    );
-
-    localStorage.setItem(
-      "notifications",
-      JSON.stringify(
-        safeParse(localStorage.getItem("notifications"), []).filter(
-          (n) => n.userId !== user.id
-        )
-      )
-    );
-
-    localStorage.removeItem("conversations");
     localStorage.removeItem("user");
-
     setUser(null);
 
     window.location.replace("/register");
   };
 
-  // Improved isAdmin
-  const isAdmin = user?.role === "admin" || user?.role === "Admin";
+  const isAdmin = user?.role?.toLowerCase() === "admin";
 
-  // Helper to check if user can access admin panel
-  const canAccessAdmin = () => {
-    return user && (user.role === "admin" || user.role === "Admin");
+  const value = {
+    user,
+    loading,
+    register,
+    login,
+    logout,
+    updateUser,
+    refreshUser,
+    deleteUser,
+    isAdmin,
   };
-  
+
   return (
-    <AuthContext.Provider
-    value={{
-  user,
-  loading,
-  register,
-  login,
-  logout,
-  updateUser,
-  refreshUser,
-  deleteUser,
-  isAdmin,
-  canAccessAdmin   // ← add this
-}}
-    >
+    <AuthContext.Provider value={value}>
       {!loading && children}
     </AuthContext.Provider>
   );

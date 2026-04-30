@@ -20,7 +20,6 @@ ChartJS.register(
   CategoryScale, LinearScale, PointElement, LineElement,
   BarElement, ArcElement, Title, Tooltip, Legend, Filler
 );
-
 /* ─────────────────────────────────────────────
    HELPERS
 ───────────────────────────────────────────── */
@@ -36,22 +35,30 @@ const broadcast = (userId, message) => {
 const TABS = ["Overview", "Gigs", "Users", "Applications", "Post Gig", "Reports", "Settings"];
 
 const CATEGORIES = ["design", "web", "writing", "video", "marketing", "security", "audio", "other"];
-
 /* ─────────────────────────────────────────────
    ADMIN COMPONENT
 ───────────────────────────────────────────── */
 const Admin = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin, loading } = useAuth();   // ← Added isAdmin & loading
   const navigate = useNavigate();
 
-  // ── Auth guard ──
+  // ── IMPROVED Auth guard ──
   useEffect(() => {
-    if (!user) { navigate("/login"); return; }
-    if (user.role !== "admin" && user.role !== "Admin") navigate("/dashboard");
-  }, [user]);
+    if (loading) return;                    // Wait until auth is loaded
+
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+
+    if (!isAdmin) {                         // Use isAdmin from context
+      // Optional: toast$("Access Denied: Admin only", "error");
+      navigate("/dashboard");
+    }
+  }, [user, isAdmin, loading, navigate]);
 
   // ── State ──
-  const [tab, setTab]                   = useState("Overview");
+const [tab, setTab]                   = useState("Overview");
   const [gigs, setGigs]                 = useState([]);
   const [users, setUsers]               = useState([]);
   const [applications, setApplications] = useState([]);
@@ -70,7 +77,8 @@ const Admin = () => {
   // Post Gig form
   const [gigForm, setGigForm] = useState({
     title: "", description: "", price: "", category: "web",
-    owner: user?.name || "", ownerAvatar: user?.profile?.avatar || "",
+    owner: user?.name || "", 
+    ownerAvatar: user?.profile?.avatar || "",
     image: "", featured: false,
   });
   const [gigImagePreview, setGigImagePreview] = useState("");
@@ -78,7 +86,7 @@ const Admin = () => {
   const [aiInput, setAiInput] = useState("");
 
   // ── Load data ──
-  const loadAll = () => {
+const loadAll = () => {
     if (!user) return;
     const storedGigs  = ls("gigs", []);
     const storedApps  = ls("applications", []);
@@ -86,18 +94,30 @@ const Admin = () => {
     setGigs(storedGigs);
     setApplications(storedApps);
     const appUsers = storedApps.map(a => ({
-      id: a.applicantId, name: a.applicantName || "Unknown",
-      email: a.applicantEmail || "—", role: "user", status: "active",
+      id: a.applicantId, 
+      name: a.applicantName || "Unknown",
+      email: a.applicantEmail || "—", 
+      role: "user", 
+      status: "active",
     }));
     const merged = [...storedUsers];
-    appUsers.forEach(u => { if (!merged.find(x => x.id === u.id)) merged.push(u); });
+    appUsers.forEach(u => { 
+      if (!merged.find(x => x.id === u.id)) merged.push(u); 
+    });
     setUsers(merged);
   };
 
-  useEffect(() => { loadAll(); window.addEventListener("storage", loadAll); return () => window.removeEventListener("storage", loadAll); }, [user]);
+  useEffect(() => { 
+    loadAll(); 
+    window.addEventListener("storage", loadAll); 
+    return () => window.removeEventListener("storage", loadAll); 
+  }, [user]);
 
   // ── Toast ──
-  const toast$ = (msg, type = "success") => { setToast({ msg, type }); setTimeout(() => setToast(null), 3200); };
+  const toast$ = (msg, type = "success") => { 
+    setToast({ msg, type }); 
+    setTimeout(() => setToast(null), 3200); 
+  };
 
   // ── Confirm modal ──
   const confirm$ = (message, onOk) => setConfirm({ message, onOk });
@@ -145,6 +165,7 @@ const Admin = () => {
       setConfirm(null); setSelectedGig(null);
     });
   };
+  
 
   // ══════════════════════════════
   //  USER ACTIONS
@@ -337,6 +358,16 @@ const Admin = () => {
   // ══════════════════════════════
   //  RENDER
   // ══════════════════════════════
+  if (loading || !user || !isAdmin) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-zinc-400">Verifying Admin Access...</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-100 font-sans">
 
@@ -1037,7 +1068,6 @@ const Modal = ({ onClose, title, children }) => (
     </div>
   </div>
 );
-
 /* ─────────────────────────────────────────────
    GIG CARD (grid)
 ───────────────────────────────────────────── */
